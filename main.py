@@ -40,12 +40,6 @@ def readFile(path):
             contents = file.read()
       return contents
 
-#cert = provision_cert('rfocht@amerisure.com','*.amerisure.com')
-#print (cert['certificate'])
-#print (cert['private_key'])
-#print (cert['certificate_chain'])
-
-
 def ssl_expiry_datetime(hostname):
     ssl_date_fmt = r'%b %d %H:%M:%S %Y %Z'
 
@@ -80,9 +74,20 @@ def getDaystoExpire(domain):
       expTime = abs((expDatetime - now).days)
       return expTime
 
+##### MAIN#####
 
+#Check if the domain is less than 15 days to expire.
+#If it is, then generate new certs
 domain = 'thefochts.com'
 timeVal = getDaystoExpire(domain)
 print (timeVal)
 
+if (timeVal < 15) 
+
+
+
+cert = provision_cert('rfocht@amerisure.com','*.amerisure.com')
+print (cert['certificate'])
+print (cert['private_key'])
+print (cert['certificate_chain'])
 
