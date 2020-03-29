@@ -15,7 +15,7 @@ from collections import defaultdict
 from cryptography import x509
 from dateutil.parser import parse
 
-def provision_cert(email, domain, sans):
+def provisionCert(email, domain, sans):
       certbot.main.main([
       'certonly',                             
       '-n',                                   
@@ -29,18 +29,18 @@ def provision_cert(email, domain, sans):
       '--work-dir', '/tmp/work-dir/',
       '--logs-dir', '/tmp/logs-dir/',
       ])
-      #TODO: Iterate over all the domains, this just does the first one
+
       first_domain = domain.split(',')[0]
       first_domain = first_domain.replace("*.","")
       path = '/tmp/config-dir/live/' + first_domain + '/'
 
       return {
-            'certificate': read_and_delete_file(path + 'cert.pem'),
-            'private_key': read_and_delete_file(path + 'privkey.pem'),
-            'certificate_chain': read_and_delete_file(path + 'chain.pem')
+            'certificate': readDeleteFile(path + 'cert.pem'),
+            'private_key': readDeleteFile(path + 'privkey.pem'),
+            'certificate_chain': readDeleteFile(path + 'chain.pem')
       }
 
-def read_and_delete_file(path):
+def readDeleteFile(path):
       with open(path, 'r') as file:
             contents = file.read()
       os.remove(path)
@@ -53,12 +53,13 @@ def getCert(domain):
             with context.wrap_socket(sock, server_hostname=domain) as ssock:
                   return(ssock.getpeercert())
 
-def getDaystoExpire(cert):
+def shoudlBeProvisioned(cert):
 
       expDatetime = parse(cert['notAfter'])
       expTime = abs((expDatetime - datetime.datetime.now(pytz.utc)).days)
+      print('Days to expire: '+str(expTime))
       
-      return expTime
+      return True if expTime < 20  else  False
 
 def getSslSubject(cert):
 
@@ -83,25 +84,37 @@ def saveCertToS3(bucket, domain, cert):
       
       return None
 
+def getDomainsToCheck(bucket, filename):
+      
+      s3 = boto3.resource(service_name = 's3')
+
+      s3Object = s3.Object(bucket, filename)
+      config =  s3Object.get()['Body'].read()
+      return(json.loads(config))
+
 ##### MAIN#####
 
 #Check if the domain is less than 15 days to expire.
 #
-domain='amerisure.com'
-bucket='amic-ssl-certs'
+
+bucket='rlf-test-bucket'
 email='rob@thefochts.com'
 
-cert=getCert(domain)
-print('Subject: '+getSslSubject(cert))
-print('SANs: '+getSslSans(cert))
-print('Days to Expire: '+str(getDaystoExpire(cert)) )
+allDomains = getDomainsToCheck(bucket, 'sslDomains')
 
-
-#if (timeVal < 20):
-#      cert = provision_cert(email,domain)
-#      saveCertToS3(bucket, domain, cert)
-#      print(domain+' has been updated')
-
-
-
-
+for domainName in allDomains:
+      print('Working on '+domainName)
+      location = str(allDomains[domainName])
+      cert = getCert(domainName)
+      if shoudlBeProvisioned(cert):
+            print('getting new cert for '+domainName)
+            newCertObj = provisionCert(email, domainName, getSslSans(cert))
+            if location == 's3':
+                  print('Saving new cert to S3')
+                  saveCertToS3(bucket, domainName, newCertObj)
+            if location == 'internalNetscaler':
+                  print('Saving new cert to Internal Netscaler')
+            if location == 'perimeterNetscaler':
+                  print('Saving new cert to Perimeter Netscaler')
+      else:
+            print(domainName+' does not need updating')
