@@ -8,10 +8,14 @@ import ssl
 import urllib.request, urllib.error, urllib.parse, json
 from urllib.parse import urlparse
 import OpenSSL
-from datetime import date
+import datetime
+import pytz
+import boto3
+from collections import defaultdict
+from cryptography import x509
+from dateutil.parser import parse
 
-
-def provision_cert(email, domains):
+def provision_cert(email, domain, sans):
       certbot.main.main([
       'certonly',                             
       '-n',                                   
@@ -19,75 +23,85 @@ def provision_cert(email, domains):
       '--email', email,                       
       '--dns-dnsmadeeasy',                    
       '--dns-dnsmadeeasy-credentials', '/tmp/dnsmadeeasy.ini',
-      '-d', domains,                          
+      '-d', domain, 
+      '-d', sans,                         
       '--config-dir', '/tmp/config-dir/',
       '--work-dir', '/tmp/work-dir/',
       '--logs-dir', '/tmp/logs-dir/',
       ])
       #TODO: Iterate over all the domains, this just does the first one
-      first_domain = domains.split(',')[0]
+      first_domain = domain.split(',')[0]
       first_domain = first_domain.replace("*.","")
       path = '/tmp/config-dir/live/' + first_domain + '/'
 
       return {
-      'certificate': readFile(path + 'cert.pem'),
-      'private_key': readFile(path + 'privkey.pem'),
-      'certificate_chain': readFile(path + 'chain.pem')
+            'certificate': read_and_delete_file(path + 'cert.pem'),
+            'private_key': read_and_delete_file(path + 'privkey.pem'),
+            'certificate_chain': read_and_delete_file(path + 'chain.pem')
       }
 
-def readFile(path):
+def read_and_delete_file(path):
       with open(path, 'r') as file:
             contents = file.read()
+      os.remove(path)
       return contents
 
-def ssl_expiry_datetime(hostname):
-    ssl_date_fmt = r'%b %d %H:%M:%S %Y %Z'
+def getCert(domain):
+      context = ssl.create_default_context()
 
-    context = ssl.create_default_context()
-    conn = context.wrap_socket(
-        socket.socket(socket.AF_INET),
-        server_hostname=hostname,
-    )
-    # 3 second timeout because Lambda has runtime limitations
-    conn.settimeout(3.0)
+      with socket.create_connection((domain, 443)) as sock:
+            with context.wrap_socket(sock, server_hostname=domain) as ssock:
+                  return(ssock.getpeercert())
 
-    conn.connect((hostname, 443))
-    ssl_info = conn.getpeercert()
-    print(ssl_info)
-    # parse the string from the certificate into a Python datetime object
-    return datetime.datetime.strptime(ssl_info['notAfter'], ssl_date_fmt)
+def getDaystoExpire(cert):
 
-
-def getDaystoExpire(domain):
-      now = date.today()
-      # get SSL Cert info
-      cert = ssl.get_server_certificate((domain, 443))
-      x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, cert)
-      x509info = x509.get_notAfter()
-
-      exp_day = int(x509info[6:8].decode('utf-8'))
-      exp_month = int(x509info[4:6].decode('utf-8'))
-      exp_year = int(x509info[:4].decode('utf-8'))
-
-      expDatetime  = date(exp_year,exp_month,exp_day)
-
-      expTime = abs((expDatetime - now).days)
+      expDatetime = parse(cert['notAfter'])
+      expTime = abs((expDatetime - datetime.datetime.now(pytz.utc)).days)
+      
       return expTime
+
+def getSslSubject(cert):
+
+     subject = dict(item[0] for item in cert['subject'])
+     return((subject['commonName']))
+
+def getSslSans(cert):
+      
+      subjectAltName = defaultdict(set)
+      for type_, san in cert['subjectAltName']:
+            subjectAltName[type_].add(san)
+      sans = subjectAltName['DNS']
+
+      return(", ".join(sans))
+
+def saveCertToS3(bucket, domain, cert):
+      
+      s3 = boto3.resource(service_name = 's3')
+      
+      s3.Object(bucket, domain.replace('*.', '', 1)+'.crt').put(Body=cert['certificate'])
+      s3.Object(bucket, domain.replace('*.', '', 1)+'.key').put(Body=cert['private_key'])
+      
+      return None
 
 ##### MAIN#####
 
 #Check if the domain is less than 15 days to expire.
-#If it is, then generate new certs
-domain = 'thefochts.com'
-timeVal = getDaystoExpire(domain)
-print (timeVal)
+#
+domain='amerisure.com'
+bucket='amic-ssl-certs'
+email='rob@thefochts.com'
 
-if (timeVal < 15) 
+cert=getCert(domain)
+print('Subject: '+getSslSubject(cert))
+print('SANs: '+getSslSans(cert))
+print('Days to Expire: '+str(getDaystoExpire(cert)) )
+
+
+#if (timeVal < 20):
+#      cert = provision_cert(email,domain)
+#      saveCertToS3(bucket, domain, cert)
+#      print(domain+' has been updated')
 
 
 
-cert = provision_cert('rfocht@amerisure.com','*.amerisure.com')
-print (cert['certificate'])
-print (cert['private_key'])
-print (cert['certificate_chain'])
 
