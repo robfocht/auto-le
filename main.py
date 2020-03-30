@@ -14,6 +14,7 @@ import boto3
 from collections import defaultdict
 from cryptography import x509
 from dateutil.parser import parse
+import shutil
 
 def provisionCert(email, domain, sans):
       certbot.main.main([
@@ -24,27 +25,35 @@ def provisionCert(email, domain, sans):
       '--dns-dnsmadeeasy',                    
       '--dns-dnsmadeeasy-credentials', '/tmp/dnsmadeeasy.ini',
       '-d', domain, 
-      '-d', sans,                         
+      '-d', sans,
+      '--test-cert',                        
       '--config-dir', '/tmp/config-dir/',
       '--work-dir', '/tmp/work-dir/',
       '--logs-dir', '/tmp/logs-dir/',
       ])
 
-      first_domain = domain.split(',')[0]
-      first_domain = first_domain.replace("*.","")
-      path = '/tmp/config-dir/live/' + first_domain + '/'
+      domain = domain.replace("*.","")
+      path = '/tmp/config-dir/live/' + domain + '/'
+      cert_value = readFile(path + 'cert.pem')
+      privkey_value =  readFile(path + 'privkey.pem')
+      certchain_value =  readFile(path + 'chain.pem')
+      fullchain_value = readFile(path + 'fullchain.pem')
+
+      #clean up
+      shutil.rmtree('/tmp/config-dir/')
+      shutil.rmtree('/tmp/work-dir/')
+      shutil.rmtree('/tmp/logs-dir/')
 
       return {
-            'certificate': readDeleteFile(path + 'cert.pem'),
-            'private_key': readDeleteFile(path + 'privkey.pem'),
-            'certificate_chain': readDeleteFile(path + 'chain.pem')
+            'certificate': cert_value,
+            'private_key': privkey_value,
+            'certificate_chain': certchain_value,
+            'full_chain': fullchain_value
       }
 
-def readDeleteFile(path):
+def readFile(path):
       with open(path, 'r') as file:
             contents = file.read()
-      print(path)
-      os.remove(path)
       return contents
 
 def getCert(domain):
@@ -60,7 +69,7 @@ def shoudlBeProvisioned(cert):
       expTime = abs((expDatetime - datetime.datetime.now(pytz.utc)).days)
       print('Days to expire: '+str(expTime))
       
-      return True if expTime < 90  else  False
+      return True if expTime < 70  else  False
 
 def getSslSubject(cert):
 
@@ -80,7 +89,7 @@ def saveCertToS3(bucket, domain, cert):
       
       s3 = boto3.resource(service_name = 's3')
       
-      s3.Object(bucket, domain.replace('*.', '', 1)+'.crt').put(Body=cert['certificate'])
+      s3.Object(bucket, domain.replace('*.', '', 1)+'.crt').put(Body=cert['full_chain'])
       s3.Object(bucket, domain.replace('*.', '', 1)+'.key').put(Body=cert['private_key'])
       
       return None
@@ -96,8 +105,8 @@ def getEndpointsToCheck(bucket, filename):
 ##### MAIN#####
 
 # S3 Bucket Name
-#bucket='rlf-test-bucket'
-bucket='amic-ssl-certs'
+bucket='rlf-test-bucket'
+#bucket='amic-ssl-certs'
 # Filename with endpoints to check 
 endpointFilename = 'endpointList.json'
 # Cert Email address
