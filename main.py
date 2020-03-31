@@ -1,20 +1,15 @@
 import certbot.main
-import datetime
-import os
-import subprocess
+import cryptography
 import datetime
 import socket
+import json
 import ssl
-import urllib.request, urllib.error, urllib.parse, json
-from urllib.parse import urlparse
-import OpenSSL
-import datetime
 import pytz
 import boto3
-from collections import defaultdict
-from cryptography import x509
-from dateutil.parser import parse
 import shutil
+from collections import defaultdict
+from dateutil.parser import parse
+
 
 def provisionCert(email, domain, sans):
       certbot.main.main([
@@ -104,30 +99,31 @@ def getEndpointsToCheck(bucket, filename):
 
 ##### MAIN#####
 
-# S3 Bucket Name
-bucket='rlf-test-bucket'
-#bucket='amic-ssl-certs'
-# Filename with endpoints to check 
-endpointFilename = 'endpointList.json'
-# Cert Email address
-email='rfocht@amerisure.com'
+def handler(event, context):
+      # S3 Bucket Name
+      bucket='rlf-test-bucket'
+      #bucket='amic-ssl-certs'
+      # Filename with endpoints to check 
+      endpointFilename = 'endpointList.json'
+      # Cert Email address
+      email='rfocht@amerisure.com'
 
-endPointsToCheck = getEndpointsToCheck(bucket, endpointFilename)
+      endPointsToCheck = getEndpointsToCheck(bucket, endpointFilename)
 
-for endPoint in endPointsToCheck:
-      print('Working on endpoint: '+endPoint)
-      certLocation = endPointsToCheck[endPoint]
-      endpointCertObject = getCert(endPoint)
-      endpointCertSubject = getSslSubject(endpointCertObject)
-      if shoudlBeProvisioned(endpointCertObject):
-            print('getting new cert for '+endpointCertSubject)
-            newCertObj = provisionCert(email, endpointCertSubject, getSslSans(endpointCertObject))
-            if certLocation == 's3':
-                  print('Saving a new cert for endpoint '+endPoint+' with SSL Subject CN '+endpointCertSubject+' to S3 bucket '+bucket)
-                  saveCertToS3(bucket, endpointCertSubject, newCertObj)
-            if certLocation == 'internalNetscaler':
-                  print('Saving a new cert for endpoint '+endPoint+' with SSL Subject CN '+endpointCertSubject+' to Internal Netscaler')
-            if certLocation == 'perimeterNetscaler':
-                  print('Saving a new cert for endpoint '+endPoint+' with SSL Subject CN '+endpointCertSubject+' to Perimeter Netscaler')
-      else:
-            print('The endpoint '+endPoint+' with SSL Subject CN '+endpointCertSubject+' does not need updating')
+      for endPoint in endPointsToCheck:
+            print('Working on endpoint: '+endPoint)
+            certLocation = endPointsToCheck[endPoint]
+            endpointCertObject = getCert(endPoint)
+            endpointCertSubject = getSslSubject(endpointCertObject)
+            if shoudlBeProvisioned(endpointCertObject):
+                  print('getting new cert for '+endpointCertSubject)
+                  newCertObj = provisionCert(email, endpointCertSubject, getSslSans(endpointCertObject))
+                  if certLocation == 's3':
+                        print('Saving a new cert for endpoint '+endPoint+' with SSL Subject CN '+endpointCertSubject+' to S3 bucket '+bucket)
+                        saveCertToS3(bucket, endpointCertSubject, newCertObj)
+                  if certLocation == 'internalNetscaler':
+                        print('Saving a new cert for endpoint '+endPoint+' with SSL Subject CN '+endpointCertSubject+' to Internal Netscaler')
+                  if certLocation == 'perimeterNetscaler':
+                        print('Saving a new cert for endpoint '+endPoint+' with SSL Subject CN '+endpointCertSubject+' to Perimeter Netscaler')
+            else:
+                  print('The endpoint '+endPoint+' with SSL Subject CN '+endpointCertSubject+' does not need updating')
