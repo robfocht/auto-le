@@ -16,6 +16,10 @@ from botocore.exceptions import ClientError
 def provisionCert(email, domain, sans):
       
       #grab DME credentials from AWS Secrets
+      deleteFileIfExists('/tmp/dnsmadeeasy.ini')
+      deleteDirIfExists('/tmp/config-dir/')
+      deleteDirIfExists('/tmp/work-dir/')
+      deleteDirIfExists('/tmp/logs-dir/')
       file = open('/tmp/dnsmadeeasy.ini','w') 
       file.write('dns_dnsmadeeasy_api_key = '+the_DME_secret()['API Key']+'\n') 
       file.write('dns_dnsmadeeasy_secret_key = '+the_DME_secret()['Secret Key']+'\n')
@@ -57,6 +61,14 @@ def provisionCert(email, domain, sans):
             'certificate_chain': certchain_value,
             'full_chain': fullchain_value
       }
+
+def deleteFileIfExists(filepath):
+      if os.path.isfile(filepath):
+            os.remove(filepath)
+
+def deleteDirIfExists(dirpath):
+      if os.path.exists(dirpath):
+            shutil.rmtree(dirpath)
 
 def readFile(path):
       with open(path, 'r') as file:
@@ -199,45 +211,46 @@ def destroyNAT(natGatewayId,routeTableId):
 ##### MAIN#####
 
 #Uncomment this line and indent all lines below for Lambda
-#def handler(event, context):
-# S3 Bucket Name
-bucket = 'rlf-test-bucket'
-#bucket='amic-ssl-certs'
-# Filename with endpoints to check 
-endpointFilename = 'endpointList.json'
-# Cert Email address
-email='rfocht@amerisure.com'
+def handler(event, context):
+      # S3 Bucket Name
+      bucket = 'rlf-test-bucket'
+      #bucket='amic-ssl-certs'
+      # Filename with endpoints to check 
+      endpointFilename = 'endpointList.json'
+      # Cert Email address
+      email='rfocht@amerisure.com'
 
-#Spin up the NAT gateway and assign the EIP
-# Pre-defined stuff:
-#     alocationId is the Id of the EIP to be reused and assigned to the NAT gateway
-#     subnetId is the subnet where the NAT gateway will be placed
-#     routeTableId is the route table for the certbot-private subnet that needs a 0.0.0.0/0 entry for the NAT Gateway
-allocationId = 'eipalloc-0e90668722b9b21b8'
-subnetId = 'subnet-037e77c0a52a8841a'
-routeTableId = 'rtb-0f557ae3731a55fcf'
+      #Spin up the NAT gateway and assign the EIP
+      # Pre-defined stuff:
+      #     alocationId is the Id of the EIP to be reused and assigned to the NAT gateway
+      #     subnetId is the subnet where the NAT gateway will be placed
+      #     routeTableId is the route table for the certbot-private subnet that needs a 0.0.0.0/0 entry for the NAT Gateway
+      allocationId = 'eipalloc-0e90668722b9b21b8'
+      subnetId = 'subnet-037e77c0a52a8841a'
+      routeTableId = 'rtb-0f557ae3731a55fcf'
 
-ourNatGateway = buildNat(allocationId, subnetId, routeTableId)
+      #ourNatGateway = buildNat(allocationId, subnetId, routeTableId)
 
-endPointsToCheck = getEndpointsToCheck(bucket, endpointFilename)
+      endPointsToCheck = getEndpointsToCheck(bucket, endpointFilename)
 
-for endPoint in endPointsToCheck:
-      print('Working on endpoint: '+endPoint)
-      certLocation = endPointsToCheck[endPoint]
-      endpointCertObject = getCert(endPoint)
-      endpointCertSubject = getSslSubject(endpointCertObject)
-      if shoudlBeProvisioned(endpointCertObject):
-            print('getting new cert for '+endpointCertSubject)
-            newCertObj = provisionCert(email, endpointCertSubject, getSslSans(endpointCertObject))
-            if certLocation == 's3':
-                  print('Saving a new cert for endpoint '+endPoint+' with SSL Subject CN '+endpointCertSubject+' to S3 bucket '+bucket)
-                  saveCertToS3(bucket, endpointCertSubject, newCertObj)
-            if certLocation == 'internalNetscaler':
-                  print('Saving a new cert for endpoint '+endPoint+' with SSL Subject CN '+endpointCertSubject+' to Internal Netscaler')
-            if certLocation == 'perimeterNetscaler':
-                 print('Saving a new cert for endpoint '+endPoint+' with SSL Subject CN '+endpointCertSubject+' to Perimeter Netscaler')
-      else:
-            print('The endpoint '+endPoint+' with SSL Subject CN '+endpointCertSubject+' does not need updating')
+      for endPoint in endPointsToCheck:
+            print('Working on endpoint: '+endPoint)
+            certLocation = endPointsToCheck[endPoint]
+            endpointCertObject = getCert(endPoint)
+            endpointCertSubject = getSslSubject(endpointCertObject)
+            if shoudlBeProvisioned(endpointCertObject):
+                  print('getting new cert for '+endpointCertSubject)
+                  newCertObj = provisionCert(email, endpointCertSubject, getSslSans(endpointCertObject))
+                  if certLocation == 's3':
+                        print('Saving a new cert for endpoint '+endPoint+' with SSL Subject CN '+endpointCertSubject+' to S3 bucket '+bucket)
+                        saveCertToS3(bucket, endpointCertSubject, newCertObj)
+                  if certLocation == 'internalNetscaler':
+                        print('Saving a new cert for endpoint '+endPoint+' with SSL Subject CN '+endpointCertSubject+' to Internal Netscaler')
+                  if certLocation == 'perimeterNetscaler':
+                        print('Saving a new cert for endpoint '+endPoint+' with SSL Subject CN '+endpointCertSubject+' to Perimeter Netscaler')
+            else:
+                  print('The endpoint '+endPoint+' with SSL Subject CN '+endpointCertSubject+' does not need updating')
 
-#clean up
-destroyNAT(ourNatGateway, routeTableId)
+      #clean up
+      #destroyNAT(ourNatGateway, routeTableId)
+      return('Success')
