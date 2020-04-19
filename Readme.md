@@ -11,3 +11,14 @@
             - provisioned cert will have the subjectCN set to domain, SANs as listed in sans, email as provdied. 
             - returns a cert object containing: 'certificate' , 'private_key' and 'certificate_chain'
       d. If location is _s3_ then _saveCertsToS3Bucket_ specifying the bucket, domain and cert object
+
+
+      1. Is the sonar cert valid?
+      2. create nginx container that points to sonar.a,ersoiure.com
+      3. Deploy noew nginx container
+      
+
+      Statemachine IAM Roles Needed:
+
+      State mAchine needs: XrayAccess, LambdaInvoke
+      Lambda Funcitons: Lambda Basic, StepFunction, EC2

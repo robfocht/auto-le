@@ -168,46 +168,6 @@ def the_DME_secret():
             decoded_binary_secret = base64.b64decode(get_secret_value_response['SecretBinary'])
             return(json.loads(decoded_binary_secret))
 
-def buildNat(allocationId,subnetId,routeTableId):
-      client = boto3.client('ec2')
-      ec2 = boto3.resource('ec2')
-      print('Createing NAT gateway (this may take a minute or two)...')
-      nat_response = client.create_nat_gateway(
-            AllocationId=allocationId,
-            SubnetId=subnetId,
-            TagSpecifications=[{
-                  'ResourceType': 'natgateway',
-                  'Tags': [{
-                        'Key': 'Name',
-                        'Value': 'certbot-dme-natgw'
-                        },]
-            },]
-      )
-      waiter = client.get_waiter('nat_gateway_available')
-      waiter.wait(
-            NatGatewayIds=[nat_response['NatGateway']['NatGatewayId']],
-            WaiterConfig={ 'Delay': 15,'MaxAttempts': 75 }
-      )
-      print('NAT gateway '+nat_response['NatGateway']['NatGatewayId']+'is up. Adding routes to '+routeTableId)
-      route_table = ec2.RouteTable(routeTableId)
-      route = route_table.create_route(
-            DestinationCidrBlock='0.0.0.0/0',
-            NatGatewayId=nat_response['NatGateway']['NatGatewayId'],
-      )
-      return(nat_response['NatGateway']['NatGatewayId'])
-
-def destroyNAT(natGatewayId,routeTableId):
-      client = boto3.client('ec2')
-      print('Destroying NAT Gateway...')
-      response = client.delete_nat_gateway(
-            NatGatewayId=natGatewayId,
-      )
-      print('Destroying route to NAT gateway...')
-      response = client.delete_route(
-            DestinationCidrBlock='0.0.0.0/0',
-            RouteTableId=routeTableId,
-      )
-
 ##### MAIN#####
 
 #Uncomment this line and indent all lines below for Lambda
@@ -229,8 +189,6 @@ def handler(event, context):
       subnetId = 'subnet-037e77c0a52a8841a'
       routeTableId = 'rtb-0f557ae3731a55fcf'
 
-      #ourNatGateway = buildNat(allocationId, subnetId, routeTableId)
-
       endPointsToCheck = getEndpointsToCheck(bucket, endpointFilename)
 
       for endPoint in endPointsToCheck:
@@ -242,15 +200,13 @@ def handler(event, context):
                   print('getting new cert for '+endpointCertSubject)
                   newCertObj = provisionCert(email, endpointCertSubject, getSslSans(endpointCertObject))
                   if certLocation == 's3':
-                        print('Saving a new cert for endpoint '+endPoint+' with SSL Subject CN '+endpointCertSubject+' to S3 bucket '+bucket)
+                        print('Saving a new cert for endpoint '+endPoint+' with SSL Subject CN= '+endpointCertSubject+' to S3 bucket '+bucket)
                         saveCertToS3(bucket, endpointCertSubject, newCertObj)
                   if certLocation == 'internalNetscaler':
-                        print('Saving a new cert for endpoint '+endPoint+' with SSL Subject CN '+endpointCertSubject+' to Internal Netscaler')
+                        print('Saving a new cert for endpoint '+endPoint+' with SSL Subject CN= '+endpointCertSubject+' to Internal Netscaler')
                   if certLocation == 'perimeterNetscaler':
-                        print('Saving a new cert for endpoint '+endPoint+' with SSL Subject CN '+endpointCertSubject+' to Perimeter Netscaler')
+                        print('Saving a new cert for endpoint '+endPoint+' with SSL Subject CN= '+endpointCertSubject+' to Perimeter Netscaler')
             else:
-                  print('The endpoint '+endPoint+' with SSL Subject CN '+endpointCertSubject+' does not need updating')
+                  print('The endpoint '+endPoint+' with SSL Subject CN= '+endpointCertSubject+' does not need updating')
 
-      #clean up
-      #destroyNAT(ourNatGateway, routeTableId)
       return('Success')
