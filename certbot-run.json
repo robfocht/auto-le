@@ -1,0 +1,83 @@
+{
+  "Comment": "Step funtion to build certbot environmnet, run certbot, destroy the certbot env.",
+  "StartAt": "Build Certbot Env",
+  "States": {
+    "Build Certbot Env": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:us-east-2:521718796648:function:build-certbot-env:$LATEST",
+        "Payload": {
+          "Input.$": "$",
+          "TaskToken.$": "$$.Task.Token"
+        }
+      },
+      "Next": "Run CertBot-dme",
+      "TimeoutSeconds": 300,
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "End"
+        }
+      ],
+      "ResultPath": "$.natGatewayId"
+    },
+    "Run CertBot-dme": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:us-east-2:521718796648:function:certbot-dme:$LATEST",
+        "Payload": {
+          "Input.$": "$",
+          "TaskToken.$": "$$.Task.Token"
+        }
+      },
+      "Next": "Destroy Certbot Env",
+      "TimeoutSeconds": 600,
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": null,
+          "Next": "Destroy Certbot Env"
+        }
+      ],
+      "ResultPath": null
+    },
+    "Destroy Certbot Env": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:us-east-2:521718796648:function:destroy-certbot-env:$LATEST",
+        "Payload": {
+          "Input.$": "$",
+          "TaskToken.$": "$$.Task.Token"
+        }
+      },
+      "Next": "End",
+      "TimeoutSeconds": 300,
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "End"
+        }
+      ],
+      "ResultPath": "$.natGatewayId"
+    },
+    "End": {
+      "Type": "Pass",
+      "End": true
+    }
+  }
+}
+
+
+  
+
+
+  

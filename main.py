@@ -36,7 +36,7 @@ def provisionCert(email, domain, sans):
       '--dns-dnsmadeeasy-propagation-seconds','90',
       '-d', domain, 
       '-d', sans,
-      '--test-cert',                        
+      #'--test-cert',                        
       '--config-dir', '/tmp/config-dir/',
       '--work-dir', '/tmp/work-dir/',
       '--logs-dir', '/tmp/logs-dir/',
@@ -88,7 +88,7 @@ def shoudlBeProvisioned(cert):
       expTime = abs((expDatetime - datetime.datetime.now(pytz.utc)).days)
       print('Days to expire: '+str(expTime))
       
-      return True if expTime < 70  else  False
+      return True if expTime < 15  else  False
 
 def getSslSubject(cert):
 
@@ -173,21 +173,12 @@ def the_DME_secret():
 #Uncomment this line and indent all lines below for Lambda
 def handler(event, context):
       # S3 Bucket Name
-      bucket = 'rlf-test-bucket'
-      #bucket='amic-ssl-certs'
+      #bucket = 'rlf-test-bucket'
+      bucket='amic-ssl-certs'
       # Filename with endpoints to check 
       endpointFilename = 'endpointList.json'
       # Cert Email address
       email='rfocht@amerisure.com'
-
-      #Spin up the NAT gateway and assign the EIP
-      # Pre-defined stuff:
-      #     alocationId is the Id of the EIP to be reused and assigned to the NAT gateway
-      #     subnetId is the subnet where the NAT gateway will be placed
-      #     routeTableId is the route table for the certbot-private subnet that needs a 0.0.0.0/0 entry for the NAT Gateway
-      allocationId = 'eipalloc-0e90668722b9b21b8'
-      subnetId = 'subnet-037e77c0a52a8841a'
-      routeTableId = 'rtb-0f557ae3731a55fcf'
 
       endPointsToCheck = getEndpointsToCheck(bucket, endpointFilename)
 
@@ -197,7 +188,7 @@ def handler(event, context):
             endpointCertObject = getCert(endPoint)
             endpointCertSubject = getSslSubject(endpointCertObject)
             if shoudlBeProvisioned(endpointCertObject):
-                  print('getting new cert for '+endpointCertSubject)
+                  print('getting new cert for '+endpointCertSubject+' with SANs '+getSslSans(endpointCertObject))
                   newCertObj = provisionCert(email, endpointCertSubject, getSslSans(endpointCertObject))
                   if certLocation == 's3':
                         print('Saving a new cert for endpoint '+endPoint+' with SSL Subject CN= '+endpointCertSubject+' to S3 bucket '+bucket)
@@ -209,4 +200,8 @@ def handler(event, context):
             else:
                   print('The endpoint '+endPoint+' with SSL Subject CN= '+endpointCertSubject+' does not need updating')
 
-      return('Success')
+      client = boto3.client('stepfunctions')
+      response = client.send_task_success(
+            taskToken=event["TaskToken"],
+            output="\"Success\""
+      )
