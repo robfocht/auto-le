@@ -82,11 +82,12 @@ def getCert(domain):
             with context.wrap_socket(sock, server_hostname=domain) as ssock:
                   return(ssock.getpeercert())
 
+
 def shoudlBeProvisioned(cert):
 
       expDatetime = parse(cert['notAfter'])
       expTime = abs((expDatetime - datetime.datetime.now(pytz.utc)).days)
-      print('Days to expire: '+str(expTime))
+      print('--Days to expire: '+str(expTime))
       
       return True if expTime < 15  else  False
 
@@ -168,7 +169,7 @@ def the_DME_secret():
             decoded_binary_secret = base64.b64decode(get_secret_value_response['SecretBinary'])
             return(json.loads(decoded_binary_secret))
 
-##### MAIN#####
+##### MAIN #####
 
 #Uncomment this line and indent all lines below for Lambda
 def handler(event, context):
@@ -185,20 +186,28 @@ def handler(event, context):
       for endPoint in endPointsToCheck:
             print('Working on endpoint: '+endPoint)
             certLocation = endPointsToCheck[endPoint]
-            endpointCertObject = getCert(endPoint)
+            
+            try: 
+                  endpointCertObject = getCert(endPoint)
+            except Exception as err:
+                  print('--Something is borked with endpoint '+endPoint+' so skipping this time.')
+                  print('--Reason is: ', err)
+                  continue
+
             endpointCertSubject = getSslSubject(endpointCertObject)
             if shoudlBeProvisioned(endpointCertObject):
-                  print('getting new cert for '+endpointCertSubject+' with SANs '+getSslSans(endpointCertObject))
+                  print('--Getting new cert for '+endpointCertSubject+' with SANs '+getSslSans(endpointCertObject))
                   newCertObj = provisionCert(email, endpointCertSubject, getSslSans(endpointCertObject))
                   if certLocation == 's3':
-                        print('Saving a new cert for endpoint '+endPoint+' with SSL Subject CN= '+endpointCertSubject+' to S3 bucket '+bucket)
+                        print('--Saving a new cert for endpoint '+endPoint+' with SSL Subject CN= '+endpointCertSubject+' to S3 bucket '+bucket)
                         saveCertToS3(bucket, endpointCertSubject, newCertObj)
                   if certLocation == 'internalNetscaler':
-                        print('Saving a new cert for endpoint '+endPoint+' with SSL Subject CN= '+endpointCertSubject+' to Internal Netscaler')
+                        print('--Saving a new cert for endpoint '+endPoint+' with SSL Subject CN= '+endpointCertSubject+' to Internal Netscaler')
                   if certLocation == 'perimeterNetscaler':
-                        print('Saving a new cert for endpoint '+endPoint+' with SSL Subject CN= '+endpointCertSubject+' to Perimeter Netscaler')
+                        print('--Saving a new cert for endpoint '+endPoint+' with SSL Subject CN= '+endpointCertSubject+' to Perimeter Netscaler')
             else:
-                  print('The endpoint '+endPoint+' with SSL Subject CN= '+endpointCertSubject+' does not need updating')
+                  print('--The endpoint '+endPoint+' with SSL Subject CN= '+endpointCertSubject+' does not need updating')
+
 
       client = boto3.client('stepfunctions')
       response = client.send_task_success(
